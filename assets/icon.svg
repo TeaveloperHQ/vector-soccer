@@ -1,0 +1,49 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    빨대 축구(vector-soccer) 아이콘 — 큰 크기용(256px 이상). gen.py 로 생성.
+
+    teaveloper 공용 규격: 800x800 라운드 사각형(rx 184) · 공식 그라데이션 · 흰색 죽방
+    (원보다 밑변이 넓고 높이 ≈ 원 지름 — 좁고 길면 열쇠구멍으로 보인다).
+
+    이 앱만의 것: 죽방이 빨대로 바람을 불어 축구공을 민다(왼쪽 위 → 오른쪽 아래 한 줄).
+    공 무늬는 브랜드 색(#6366f1). 작은 크기(16·32·48px)는 icon-small.svg.
+  -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#6366f1"/>
+      <stop offset="50%"  stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+    <clipPath id="ball"><circle cx="664" cy="654" r="150"/></clipPath>
+  </defs>
+
+  <rect x="112" y="112" width="800" height="800" rx="184" fill="url(#g)"/>
+
+  <!-- 죽방 — 원 r72 · 밑변 172 · 높이 156 -->
+  <g fill="#ffffff">
+    <circle cx="300" cy="300" r="72"/>
+    <path d="M300 348 L214 504 L386 504 Z"/>
+  </g>
+
+  <!-- 빨대 -->
+  <line x1="318" y1="318" x2="459" y2="455" stroke="#ffffff" stroke-width="14" stroke-linecap="round"/>
+
+  <!-- 바람 줄기(빨대 끝 → 공) -->
+  <g stroke="#ffffff" stroke-width="11" stroke-linecap="round" opacity="0.85">
+    <line x1="488" y1="483" x2="535" y2="529"/>
+    <line x1="531" y1="464" x2="553" y2="484"/>
+    <line x1="470" y1="527" x2="491" y2="547"/>
+  </g>
+
+  <!-- 축구공 -->
+  <circle cx="664" cy="654" r="150" fill="#ffffff"/>
+  <g clip-path="url(#ball)" fill="#6366f1">
+    <path d="M670.8 597.4 L719.9 643.0 L691.7 703.8 L625.2 695.8 L612.3 630.0 Z"/>
+    <path d="M796.7 511.1 L808.9 573.4 L753.5 604.3 L707.0 561.1 L733.7 503.5 Z"/>
+    <path d="M840.9 736.0 L785.5 766.9 L738.9 723.7 L765.6 666.1 L828.7 673.7 Z"/>
+    <path d="M640.7 847.6 L594.1 804.4 L620.8 746.8 L683.9 754.4 L696.1 816.7 Z"/>
+    <path d="M472.7 691.6 L499.4 634.0 L562.4 641.6 L574.6 703.9 L519.2 734.8 Z"/>
+    <path d="M569.1 483.7 L632.1 491.3 L644.4 553.5 L588.9 584.4 L542.4 541.2 Z"/>
+  </g>
+  <circle cx="664" cy="654" r="146.6" fill="none" stroke="#ffffff" stroke-width="6.8"/>
+</svg>

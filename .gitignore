@@ -1,0 +1,12 @@
+/dist/
+*.exe
+*.log
+
+# 빌드 산출물(리눅스 바이너리)
+/vector-soccer
+
+# 런타임 데이터(교사 PC 로컬 — 저장소엔 올리지 않음)
+/results/
+
+# 대회 진행 상황
+/competitions/
