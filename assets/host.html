@@ -80,6 +80,20 @@
   .mcard .a { color: #2563eb; } .mcard .b { color: #dc2626; }
   :root[data-theme="dark"] .mcard .a { color: #60a5fa; } :root[data-theme="dark"] .mcard .b { color: #f87171; }
   .mcard .meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--mut); margin-top: 4px; }
+  /* 대회 중: 주 경기장(대회 경기) / 보조 경기장(학생이 따로 만든 방) */
+  .arena { font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 999px; }
+  .arena.main { background: var(--acc); color: var(--on-acc); }
+  .arena.sub { background: var(--hover); color: var(--mut); border: 1px solid var(--bd); }
+  .mcard.fx { border: 2px solid var(--acc); }
+  .mcard .rd { display: none; font-size: 12px; font-weight: 800; color: var(--acc); margin-bottom: 6px; }
+  .mcard.fx .rd { display: block; }
+  #matches.sub .mcard { opacity: .8; }
+  .subnote { font-size: 12px; color: var(--mut); font-weight: 600; }
+  .subclosed { color: var(--bad); font-weight: 700; font-size: 14px; margin: -4px 0 12px; }
+  .gsel { display: inline-flex; gap: 3px; margin-left: auto; }
+  .gsel button { border: 1px solid var(--bd); background: var(--surface); border-radius: 6px; min-width: 24px; padding: 2px 5px; font-size: 12px; font-weight: 800; cursor: pointer; }
+  .gsel button.on { background: var(--acc); border-color: var(--acc); color: var(--on-acc); }
+  .pick.off .gsel { visibility: hidden; }
   .ph { font-weight: 700; }
   .ph.end { color: var(--ok); } .ph.pause { color: var(--bad); }
   .players { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
@@ -226,8 +240,13 @@
         </div>
       </div>
       <div class="right">
-        <h2>경기 현황 <span class="n" id="mCount"></span></h2>
-        <div class="matches" id="matches"></div>
+        <h2><span class="arena main">주 경기장</span>대회 경기 <span class="n" id="mainCount"></span></h2>
+        <div class="matches" id="matchesMain"></div>
+        <h2><span class="arena sub">보조 경기장</span>학생끼리 연 경기 <span class="n" id="mCount"></span>
+          <span class="subnote">기록 안 남음</span>
+          <button class="btn warn" id="subToggle" style="margin-left:auto;padding:5px 12px"></button></h2>
+        <div class="subclosed" id="subClosedNote" hidden>보조 경기장이 닫혀 있어요. 학생들은 방 만들기·초대를 할 수 없어요.</div>
+        <div class="matches sub" id="matches"></div>
         <h2>학생 <span class="n" id="pCount"></span></h2>
         <div class="legend"><span><i style="background:var(--ok)"></i>대기</span><span><i style="background:var(--acc)"></i>방 만들고 기다림</span><span><i style="background:#f59e0b"></i>경기 중</span><span><i style="background:var(--mut)"></i>연결 끊김</span></div>
         <div class="players" id="players"></div>
@@ -337,27 +356,50 @@ function renderLive(m) {
   $('#nMatch').textContent = m.matches.filter((x) => x.ph !== 'end').length;
   $('#nRoom').textContent = m.rooms;
   $('#pCount').textContent = `${online.length}명 접속`;
-  $('#mCount').textContent = m.matches.length ? `${m.matches.length}판` : '';
-
   const pw = $('#players');
   pw.innerHTML = m.players.length ? m.players.map((p) =>
     `<div class="chip${p.online ? '' : ' off'}"><i class="dot ${p.online ? p.status : ''}"></i><span>${esc(p.name)}</span></div>`).join('')
     : '<div class="empty" style="grid-column:1/-1">아직 아무도 들어오지 않았어요. QR 을 띄워 주세요.</div>';
 
-  // 경기 카드: 있는 카드는 재사용(캔버스 깜빡임 방지)
-  const box = $('#matches');
-  const ids = new Set(m.matches.map((x) => x.id));
+  // 대회 경기는 주 경기장, 학생끼리 방·초대로 연 경기는 모두 보조 경기장(기록 안 남음).
+  const fx = m.matches.filter((x) => x.fx), free = m.matches.filter((x) => !x.fx);
+  $('#mainCount').textContent = fx.length ? `${fx.length}판` : '';
+  $('#mCount').textContent = free.length ? `${free.length}판` : '';
+  renderCards($('#matchesMain'), fx, compState?.comp ? '지금 진행 중인 대회 경기가 없어요.' : '대회 탭에서 대회를 열면 여기서 경기해요.');
+  renderCards($('#matches'), free, m.subClosed ? '' : '학생끼리 방을 만들어 하는 경기가 없어요.');
+  subClosed = !!m.subClosed;
+  $('#subClosedNote').hidden = !subClosed;
+  const tg = $('#subToggle');
+  tg.textContent = subClosed ? '보조 경기장 다시 열기' : '보조 경기장 폐쇄';
+  tg.classList.toggle('warn', !subClosed);
+  tg.classList.toggle('ghost', subClosed);
+}
+
+let subClosed = false;
+$('#subToggle').onclick = () => {
+  if (subClosed) return send({ t: 'subOpen' });
+  const n = (lastHost?.matches || []).filter((x) => !x.fx && x.ph !== 'end').length;
+  if (confirm(`보조 경기장을 닫을까요?
+학생끼리 하던 경기${n ? ' ' + n + '판' : ''}이 모두 멈추고, 열린 방과 초대도 없어져요. 다시 열 때까지 새 경기를 만들 수 없어요.
+(대회 경기는 그대로 진행돼요.)`)) send({ t: 'subClose' });
+};
+
+// 경기 카드: 있는 카드는 재사용(캔버스 깜빡임 방지)
+function renderCards(box, list, emptyMsg) {
+  const ids = new Set(list.map((x) => x.id));
   box.querySelectorAll('.mcard').forEach((c) => { if (!ids.has(c.dataset.id)) c.remove(); });
   box.querySelector('.empty')?.remove();
-  if (!m.matches.length) box.innerHTML = '<div class="empty" style="grid-column:1/-1">진행 중인 경기가 없어요.</div>';
-  for (const x of m.matches) {
+  if (!list.length && emptyMsg) box.innerHTML = `<div class="empty" style="grid-column:1/-1">${emptyMsg}</div>`;
+  for (const x of list) {
     let card = box.querySelector(`.mcard[data-id="${x.id}"]`);
     if (!card) {
       card = document.createElement('div');
       card.className = 'mcard'; card.dataset.id = x.id;
-      card.innerHTML = '<canvas width="440" height="256"></canvas><div class="line"><span class="nm a"></span><span class="sc"></span><span class="nm r b"></span></div><div class="meta"><span class="ph"></span><span class="tm"></span></div>';
+      card.innerHTML = '<div class="rd"></div><canvas width="440" height="256"></canvas><div class="line"><span class="nm a"></span><span class="sc"></span><span class="nm r b"></span></div><div class="meta"><span class="ph"></span><span class="tm"></span></div>';
       box.appendChild(card);
     }
+    card.classList.toggle('fx', !!x.fx);
+    card.querySelector('.rd').textContent = x.fx ? (x.round || '대회 경기') : '';
     card.querySelector('.nm.a').textContent = x.names[0];
     card.querySelector('.nm.b').textContent = x.names[1];
     card.querySelector('.sc').innerHTML = `<span class="a">${x.score[0]}</span> : <span class="b">${x.score[1]}</span>`;
@@ -395,7 +437,7 @@ function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
 
 const draft = (() => {
   const d = new Date();
-  return { name: `${d.getMonth() + 1}월 ${d.getDate()}일 빨대 축구 대회`, type: 'league', groups: 1, timeSec: 120, goals: 0, picked: new Set(), known: new Set() };
+  return { name: `${d.getMonth() + 1}월 ${d.getDate()}일 빨대 축구 대회`, type: 'league', groups: 1, groupMode: 'random', assign: new Map(), timeSec: 120, goals: 0, picked: new Set(), known: new Set() };
 })();
 const REASON = { time: '시간', goals: '목표 골', golden: '골든골', blows: '바람 적게', forfeit: '기권', bye: '부전승', teacher: '교사 지정' };
 
@@ -417,7 +459,8 @@ function renderCreate() {
       <button class="type${draft.type === 'league' ? ' on' : ''}" data-type="league"><b>리그전</b><span>모두 한 번씩 겨뤄요. 승 3점 · 무 1점, 승점이 같으면 득실차 · 다득점.</span></button>
       <button class="type${draft.type === 'tournament' ? ' on' : ''}" data-type="tournament"><b>토너먼트</b><span>지면 탈락. 대진은 무작위, 인원이 모자라면 부전승. 동점이면 골든골.</span></button>
     </div>
-    ${draft.type === 'league' ? `<label class="lbl">조 수 — 참가자를 무작위로 고르게 나눠요. 조 안에서만 모두 한 번씩 겨뤄요</label><div class="chips" id="groupChips"></div>` : ''}
+    ${draft.type === 'league' ? `<label class="lbl">조 수 — 조 안에서만 모두 한 번씩 겨뤄요</label><div class="chips" id="groupChips"></div>
+    <div id="gmodeWrap"><label class="lbl">조 나누기</label><div class="chips" id="gmodeChips"></div></div>` : ''}
     <label class="lbl">경기 시간</label><div class="chips">${chips('timeSec', [[0, '없음'], [60, '1분'], [120, '2분'], [180, '3분'], [300, '5분']])}</div>
     <label class="lbl">목표 골</label><div class="chips">${chips('goals', [[0, '없음'], [3, '3골'], [5, '5골'], [7, '7골']])}</div>
     <label class="lbl">참가자 <span id="pickCount"></span> <button class="btn ghost" id="pickAll" style="padding:4px 10px;margin-left:8px">전체 선택</button> <button class="btn ghost" id="pickNone" style="padding:4px 10px">전체 해제</button></label>
@@ -428,16 +471,39 @@ function renderCreate() {
   syncEntrantPicker();
 }
 
+const GL = (g) => String.fromCharCode(65 + g); // 0 → A
+const manualGroups = () => draft.type === 'league' && draft.groups > 1 && draft.groupMode === 'manual';
+const pickedOnline = () => lastHost.players.filter((p) => p.online && draft.picked.has(p.key));
+
+// 직접 지정: 아직 조가 없는(또는 조 수를 줄여 사라진 조에 있던) 참가자를 가장 적은 조에 넣는다.
+function fillAssign() {
+  const G = draft.groups, keys = pickedOnline().map((p) => p.key);
+  const size = Array(G).fill(0);
+  for (const k of keys) { const g = draft.assign.get(k); if (g >= 0 && g < G) size[g]++; }
+  for (const k of keys) {
+    const g = draft.assign.get(k);
+    if (g >= 0 && g < G) continue;
+    const s = size.indexOf(Math.min(...size));
+    draft.assign.set(k, s); size[s]++;
+  }
+  return size;
+}
+
 // 접속한 학생 목록으로 참가자 체크박스를 맞춘다(새로 들어온 학생은 기본 선택). 체크 상태는 유지.
 function syncEntrantPicker() {
   const box = $('#picks');
   if (!box || !lastHost) return;
   const online = lastHost.players.filter((p) => p.online);
   for (const p of online) if (!draft.known.has(p.key)) { draft.known.add(p.key); draft.picked.add(p.key); }
-  const sig = online.map((p) => p.key + p.status + draft.picked.has(p.key)).join();
+  draft.groups = Math.min(draft.groups, Math.max(1, Math.floor(pickedOnline().length / 2)));
+  const manual = manualGroups();
+  if (manual) fillAssign();
+  const gsel = (k) => manual ? `<span class="gsel">${Array.from({ length: draft.groups }, (_, g) =>
+    `<button class="${draft.assign.get(k) === g ? 'on' : ''}" data-assign="${esc(k)}" data-g="${g}">${GL(g)}</button>`).join('')}</span>` : '';
+  const sig = online.map((p) => p.key + p.status + draft.picked.has(p.key) + (manual ? draft.assign.get(p.key) : '')).join() + manual + draft.groups;
   if (box.dataset.sig !== sig) {
     box.dataset.sig = sig;
-    box.innerHTML = online.length ? online.map((p) => `<label class="pick${p.status === 'match' ? ' busy' : ''}"><input type="checkbox" data-key="${esc(p.key)}" ${draft.picked.has(p.key) ? 'checked' : ''}><span>${esc(p.name)}</span></label>`).join('')
+    box.innerHTML = online.length ? online.map((p) => `<label class="pick${p.status === 'match' ? ' busy' : ''}${draft.picked.has(p.key) ? '' : ' off'}"><input type="checkbox" data-key="${esc(p.key)}" ${draft.picked.has(p.key) ? 'checked' : ''}><span>${esc(p.name)}</span>${gsel(p.key)}</label>`).join('')
       : '<div class="empty" style="grid-column:1/-1">접속한 학생이 없어요. 경기장 탭의 QR 로 먼저 들어오게 하세요.</div>';
   }
   updateSummary();
@@ -456,15 +522,23 @@ function updateSummary() {
     if (draft.groups > maxG) draft.groups = maxG;
     if (gc) gc.innerHTML = [1, 2, 3, 4, 5, 6, 8].map((g) => `<button class="chipbtn${draft.groups === g ? ' on' : ''}" data-groups="${g}" ${g > maxG ? 'disabled style="opacity:.35"' : ''}>${g === 1 ? '조 없음' : g + '조'}</button>`).join('');
     const G = draft.groups;
-    sizes = Array.from({ length: G }, (_, g) => Math.floor(n / G) + (g < n % G ? 1 : 0));
+    $('#gmodeWrap').hidden = G < 2;
+    $('#gmodeChips').innerHTML = [['random', '무작위 — 고르게 섞어요'], ['manual', '직접 지정 — 참가자 옆 A·B… 를 눌러요']]
+      .map(([v, t]) => `<button class="chipbtn${draft.groupMode === v ? ' on' : ''}" data-gmode="${v}">${t}</button>`).join('');
+    sizes = manualGroups() ? fillAssign()
+      : Array.from({ length: G }, (_, g) => Math.floor(n / G) + (g < n % G ? 1 : 0));
     for (const k of sizes) { games += k * (k - 1) / 2; rounds = Math.max(rounds, k % 2 ? k : k - 1); }
   } else if (n >= 2) {
     games = n - 1; rounds = Math.ceil(Math.log2(n));
   }
   const per = draft.timeSec ? draft.timeSec / 60 + 0.5 : 2.5;
-  const ok = n >= 2 && (draft.timeSec || draft.goals);
-  const groupText = draft.type === 'league' && draft.groups > 1 ? ` · <b>${draft.groups}개 조</b>(${sizes.join('·')}명)` : '';
+  const small = manualGroups() ? sizes.findIndex((k) => k < 2) : -1;
+  const ok = n >= 2 && (draft.timeSec || draft.goals) && small < 0;
+  const groupText = draft.type === 'league' && draft.groups > 1
+    ? ` · <b>${draft.groups}개 조</b>(${manualGroups() ? sizes.map((k, g) => GL(g) + ' ' + k).join(' · ') : sizes.join('·')}명${manualGroups() ? '' : ', 무작위'})` : '';
   el.innerHTML = n < 2 ? '참가자를 2명 이상 고르세요.' : !(draft.timeSec || draft.goals) ? '경기 시간이나 목표 골 중 하나는 정해야 해요.'
+    : small >= 0 ? `${GL(small)}조에 2명 이상 넣어 주세요.`
+
     : `참가 <b>${n}명</b>${groupText} · 경기 <b>${games}판</b> · <b>${rounds}라운드</b> — 라운드마다 여러 경기가 동시에 열려서 약 <b>${Math.ceil(rounds * per)}분</b> 걸려요.`
       + (draft.type === 'league' && Math.max(...sizes) > 8 ? '<br><span style="color:var(--bad)">한 조 인원이 많으면 오래 걸려요. 조 수를 늘려 보세요.</span>' : '');
   $('#createComp').disabled = !ok;
@@ -475,7 +549,7 @@ $('#compBody').addEventListener('click', (e) => {
   if (!t) return;
   if (t.matches('input[type=checkbox]')) {
     t.checked ? draft.picked.add(t.dataset.key) : draft.picked.delete(t.dataset.key);
-    updateSummary();
+    syncEntrantPicker();
     return;
   }
   if (t.matches('summary')) {
@@ -485,7 +559,9 @@ $('#compBody').addEventListener('click', (e) => {
     return;
   }
   if (t.dataset.type) { draft.name = $('#cName').value; draft.type = t.dataset.type; renderCreate(); return; }
-  if (t.dataset.groups) { draft.groups = +t.dataset.groups; updateSummary(); return; }
+  if (t.dataset.groups) { draft.groups = +t.dataset.groups; $('#picks').dataset.sig = ''; syncEntrantPicker(); return; }
+  if (t.dataset.gmode) { draft.groupMode = t.dataset.gmode; $('#picks').dataset.sig = ''; syncEntrantPicker(); return; }
+  if (t.dataset.assign) { e.preventDefault(); draft.assign.set(t.dataset.assign, +t.dataset.g); syncEntrantPicker(); return; }
   if (t.dataset.k) { draft.name = $('#cName').value; draft[t.dataset.k] = +t.dataset.v; renderCreate(); return; }
   switch (t.id) {
     case 'pickAll': lastHost.players.filter((p) => p.online).forEach((p) => draft.picked.add(p.key)); $('#picks').dataset.sig = ''; syncEntrantPicker(); return;
@@ -494,7 +570,8 @@ $('#compBody').addEventListener('click', (e) => {
       const keys = lastHost.players.filter((p) => p.online && draft.picked.has(p.key)).map((p) => p.key);
       draft.name = $('#cName').value;
       draft.creating = false;
-      send({ t: 'compCreate', name: draft.name, type: draft.type, rules: { timeSec: draft.timeSec, goals: draft.goals }, keys, groups: draft.type === 'league' ? draft.groups : 1 });
+      const assign = manualGroups() ? Object.fromEntries(keys.map((k) => [k, draft.assign.get(k)])) : undefined;
+      send({ t: 'compCreate', name: draft.name, type: draft.type, rules: { timeSec: draft.timeSec, goals: draft.goals }, keys, groups: draft.type === 'league' ? draft.groups : 1, assign });
       return;
     }
     case 'cancelCreate': draft.creating = false; renderComp(); return;
@@ -656,7 +733,7 @@ function renderResults() {
          <td class="${cls(r.players[1])}">${who(r.players[1])}</td>
          <td>${esc(ruleText(r.rules))}</td><td>${why[r.reason] || ''}</td><td class="num">${fmtClock(r.playedSec * 1000)}</td>
          <td><button class="btn danger" title="이 기록 삭제" data-del="${esc(r.date)}/${esc(r.file)}">${ICONS.trash}</button></td></tr>`).join('')}</tbody>`
-    : '<tbody><tr><td class="empty" style="border:none">학생들이 경기를 마치면 여기에 기록이 쌓여요.</td></tr></tbody>';
+    : '<tbody><tr><td class="empty" style="border:none">대회 경기(주 경기장)를 마치면 여기에 기록이 쌓여요. 학생끼리 한 경기는 기록되지 않아요.</td></tr></tbody>';
 }
 
 $('#sumTable').addEventListener('click', (e) => {

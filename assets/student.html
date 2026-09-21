@@ -98,6 +98,9 @@
   :root[data-theme="dark"] .compcard .cn { color: #fcd34d; }
   .compcard .big { font-size: 20px; font-weight: 900; margin-top: 4px; }
   .compcard .sub2 { font-size: 14px; color: var(--mut); margin-top: 4px; }
+  .subclosed { border: 2px dashed var(--bad); text-align: center; }
+  .subclosed .big { font-size: 18px; font-weight: 900; color: var(--bad); }
+  .subclosed .sub2 { font-size: 14px; color: var(--mut); margin-top: 4px; }
   .endcard .compline { font-size: 13px; font-weight: 800; color: #b45309; margin-bottom: 4px; }
   .howto { font-size: 14px; line-height: 1.6; color: var(--mut); }
   .howto b { color: var(--fg); }
@@ -374,7 +377,10 @@ function renderLobby() {
       <button class="btn sm ghost" data-decline="${esc(inv.from)}">거절</button></div></div>`;
   }
 
-  if (lobby.myRoom) {
+  if (lobby.subClosed) {
+    h += `<div class="card subclosed"><div class="big">보조 경기장이 닫혀 있어요</div>
+      <div class="sub2">지금은 친구끼리 방을 만들거나 초대할 수 없어요. 선생님이 다시 열 때까지 기다려 주세요.</div></div>`;
+  } else if (lobby.myRoom) {
     const r = lobby.rooms.find((x) => x.code === lobby.myRoom);
     h += `<div class="card myroom"><div class="meta" style="color:var(--mut)">내 방 번호</div>
       <div class="roomcode">${esc(lobby.myRoom)}</div>
@@ -386,13 +392,15 @@ function renderLobby() {
       <button class="btn" id="codeBtn">입장</button></div></div>`;
   }
 
-  const rooms = lobby.rooms.filter((r) => r.code !== lobby.myRoom);
-  h += `<h2>${ICONS.flag}열린 방</h2><div class="list">`;
-  h += rooms.length ? rooms.map((r) => `<div class="row"><span class="nm">${esc(r.owner)}</span>
-      <span class="meta">${esc(r.code)} · ${esc(ruleText(r.rules))}</span>
-      <button class="btn sm" data-join="${esc(r.code)}">들어가기</button></div>`).join('')
-    : '<div class="empty">아직 열린 방이 없어요. 방을 만들어 보세요.</div>';
-  h += '</div>';
+  if (!lobby.subClosed) {
+    const rooms = lobby.rooms.filter((r) => r.code !== lobby.myRoom);
+    h += `<h2>${ICONS.flag}열린 방</h2><div class="list">`;
+    h += rooms.length ? rooms.map((r) => `<div class="row"><span class="nm">${esc(r.owner)}</span>
+        <span class="meta">${esc(r.code)} · ${esc(ruleText(r.rules))}</span>
+        <button class="btn sm" data-join="${esc(r.code)}">들어가기</button></div>`).join('')
+      : '<div class="empty">아직 열린 방이 없어요. 방을 만들어 보세요.</div>';
+    h += '</div>';
+  }
 
   const others = lobby.players.filter((p) => p.id !== me.id);
   h += `<h2>${ICONS.people}접속한 친구 ${others.length}명</h2><div class="list">`;
@@ -400,7 +408,7 @@ function renderLobby() {
     const sent = lobby.sent.includes(p.id);
     const badge = p.status === 'match' ? '<span class="badge match">경기 중</span>'
       : p.status === 'room' ? '<span class="badge room">방 대기</span>' : '';
-    const btn = p.status === 'match' ? '' : sent
+    const btn = p.status === 'match' || lobby.subClosed ? '' : sent
       ? '<button class="btn sm ghost" disabled>초대 보냄</button>'
       : `<button class="btn sm ghost" data-invite="${esc(p.id)}" data-name="${esc(p.name)}">초대</button>`;
     return `<div class="row"><span class="nm">${esc(p.name)}</span>${badge}${btn}</div>`;

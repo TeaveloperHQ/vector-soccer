@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -78,7 +79,7 @@ func TestRoomCodeMatch(t *testing.T) {
 	}
 }
 
-func TestInviteFlowAndResultSaved(t *testing.T) {
+func TestInviteFlowNotRecorded(t *testing.T) {
 	f := newFakeHub()
 	a, b := f.join("ta", "민수"), f.join("tb", "지우")
 	pb := f.players["tb"]
@@ -100,8 +101,8 @@ func TestInviteFlowAndResultSaved(t *testing.T) {
 	f.advance(ReadyDur + 100*time.Millisecond)
 	m.ball, m.vel = vec{97, 30}, vec{30, 0}
 	f.advance(500 * time.Millisecond)
-	if m.phase != phEnd || len(f.saved) != 1 {
-		t.Fatalf("골 → 종료 → 결과 저장: phase=%s saved=%d", m.phase, len(f.saved))
+	if m.phase != phEnd || len(f.saved) != 0 {
+		t.Fatalf("골 → 종료, 보조 경기장 경기는 기록 안 함: phase=%s saved=%d", m.phase, len(f.saved))
 	}
 	r := buildResult(m, f.clock)
 	if r.Players[0].Result != "승" || r.Players[1].Result != "패" || r.Players[0].Goals != 1 {
@@ -196,6 +197,88 @@ func TestOpponentCooldownHidden(t *testing.T) {
 	f.advance(50 * time.Millisecond)
 	if sb := last(b, "s"); sb["ct"].(float64) != float64((Cooldown + MissPenalty).Milliseconds()) {
 		t.Fatalf("헛방질하면 전체 쿨타임이 늘어난다: %v", sb["ct"])
+	}
+}
+
+func TestSubArenaClose(t *testing.T) {
+	f := newFakeHub()
+	a, b := f.join("ta", "민수"), f.join("tb", "지우")
+	c, d := f.join("tc", "서연"), f.join("td", "하준")
+	e := f.join("te", "도윤")
+	f.say(a, map[string]any{"t": "create", "rules": Rules{TimeSec: 60}})
+	f.say(b, map[string]any{"t": "join", "code": f.players["ta"].room.code})
+	f.say(c, map[string]any{"t": "create", "rules": Rules{TimeSec: 60}})
+	f.say(e, map[string]any{"t": "invite", "to": f.players["td"].id, "rules": Rules{TimeSec: 60}})
+	f.advance(ReadyDur + time.Second)
+	m := f.players["ta"].match
+	if m == nil || len(f.rooms) != 1 || len(f.invites[f.players["td"]]) != 1 {
+		t.Fatal("준비: 경기 1판 + 방 1개 + 초대 1개")
+	}
+
+	host := &client{hub: f.Hub, send: make(chan []byte, 1024), host: true}
+	f.onRegister(host)
+	f.say(host, map[string]any{"t": "subClose"})
+	if len(f.matches) != 0 || len(f.rooms) != 0 || len(f.invites) != 0 || len(f.saved) != 0 {
+		t.Fatalf("폐쇄하면 경기·방·초대가 기록 없이 사라짐: matches=%d rooms=%d invites=%d saved=%d",
+			len(f.matches), len(f.rooms), len(f.invites), len(f.saved))
+	}
+	if f.players["ta"].match != nil || last(a, "cancelled") == nil || last(b, "cancelled") == nil {
+		t.Fatal("경기하던 학생은 로비로")
+	}
+	f.say(c, map[string]any{"t": "create", "rules": Rules{TimeSec: 60}})
+	if len(f.rooms) != 0 || last(c, "error") == nil {
+		t.Fatal("닫혀 있는 동안은 방을 못 만든다")
+	}
+	f.say(e, map[string]any{"t": "invite", "to": f.players["td"].id, "rules": Rules{TimeSec: 60}})
+	if len(f.invites) != 0 {
+		t.Fatal("닫혀 있는 동안은 초대 못 함")
+	}
+	f.advance(200 * time.Millisecond)
+	if l := last(d, "lobby"); l == nil || l["subClosed"] != true {
+		t.Fatalf("학생 로비에 폐쇄 상태: %v", l)
+	}
+
+	f.say(host, map[string]any{"t": "subOpen"})
+	f.say(c, map[string]any{"t": "create", "rules": Rules{TimeSec: 60}})
+	if len(f.rooms) != 1 {
+		t.Fatal("다시 열면 방을 만들 수 있다")
+	}
+}
+
+func TestSubArenaCloseKeepsCompetition(t *testing.T) {
+	f := newFakeHub()
+	keys := []string{}
+	for i, n := range []string{"민수", "지우"} {
+		f.join(fmt.Sprintf("t%d", i), n)
+		keys = append(keys, playerKey("", n))
+	}
+	host := &client{hub: f.Hub, send: make(chan []byte, 1024), host: true}
+	f.onRegister(host)
+	f.say(host, map[string]any{"t": "compCreate", "name": "리그", "type": "league", "rules": Rules{Goals: 1}, "keys": keys})
+	f.say(host, map[string]any{"t": "compStartRound"})
+	f.say(host, map[string]any{"t": "subClose"})
+	if len(f.matches) != 1 {
+		t.Fatal("주 경기장(대회 경기)은 폐쇄와 상관없이 계속")
+	}
+	var hm struct {
+		Matches []struct {
+			Fx    bool   `json:"fx"`
+			Round string `json:"round"`
+		} `json:"matches"`
+		SubClosed bool `json:"subClosed"`
+	}
+	if json.Unmarshal(f.hostMsg(), &hm) != nil || len(hm.Matches) != 1 || !hm.Matches[0].Fx || hm.Matches[0].Round != "1라운드" || !hm.SubClosed {
+		t.Fatalf("교사 화면: 대회 경기 표시·라운드 이름·폐쇄 상태: %+v", hm)
+	}
+	var m *Match
+	for _, x := range f.matches {
+		m = x
+	}
+	f.advance(ReadyDur + 100*time.Millisecond)
+	m.ball, m.vel = vec{97, 30}, vec{30, 0}
+	f.advance(500 * time.Millisecond)
+	if m.phase != phEnd || len(f.saved) != 1 {
+		t.Fatalf("대회 경기는 기록: phase=%s saved=%d", m.phase, len(f.saved))
 	}
 }
 

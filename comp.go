@@ -93,8 +93,9 @@ func shuffle[T any](s []T) {
 	}
 }
 
-// groups 는 리그 조 수(참가자를 무작위로 고르게 나눈다). 토너먼트는 무시.
-func newCompetition(name string, typ CompType, rules Rules, entrants []Entrant, groups int, now time.Time) (*Competition, error) {
+// groups 는 리그 조 수. manual 이면 entrants 의 Group 을 교사가 정한 조로 그대로 쓰고,
+// 아니면 참가자를 무작위로 고르게 나눈다. 토너먼트는 무시.
+func newCompetition(name string, typ CompType, rules Rules, entrants []Entrant, groups int, manual bool, now time.Time) (*Competition, error) {
 	if typ != League && typ != Tournament {
 		return nil, errors.New("대회 방식이 올바르지 않습니다.")
 	}
@@ -127,8 +128,23 @@ func newCompetition(name string, typ CompType, rules Rules, entrants []Entrant, 
 		name = "빨대 축구 대회"
 	}
 	shuffle(uniq)
-	for i := range uniq { // 섞은 순서대로 돌아가며 배정 → 조 인원 차이 최대 1명
-		uniq[i].Group = i % groups
+	if manual && groups > 1 {
+		size := make([]int, groups)
+		for _, e := range uniq {
+			if e.Group < 0 || e.Group >= groups {
+				return nil, errors.New(e.label() + " 학생의 조가 정해지지 않았습니다.")
+			}
+			size[e.Group]++
+		}
+		for g, n := range size {
+			if n < 2 {
+				return nil, errors.New(string(rune('A'+g)) + "조에 2명 이상 넣어 주세요.")
+			}
+		}
+	} else {
+		for i := range uniq { // 섞은 순서대로 돌아가며 배정 → 조 인원 차이 최대 1명
+			uniq[i].Group = i % groups
+		}
 	}
 	c := &Competition{ID: newID(), Name: name, Type: typ, Rules: rules, Entrants: uniq, Groups: groups,
 		CreatedAt: now.Format(time.RFC3339)}

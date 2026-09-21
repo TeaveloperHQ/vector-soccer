@@ -17,7 +17,7 @@ func entrants(n int) []Entrant {
 
 func TestLeagueEveryPairOnce(t *testing.T) {
 	for _, n := range []int{2, 3, 4, 5, 8, 9} {
-		c, err := newCompetition("리그", League, Rules{TimeSec: 60}, entrants(n), 1, t0)
+		c, err := newCompetition("리그", League, Rules{TimeSec: 60}, entrants(n), 1, false, t0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -41,7 +41,7 @@ func TestLeagueEveryPairOnce(t *testing.T) {
 }
 
 func TestLeagueGroupsRandomBalanced(t *testing.T) {
-	c, err := newCompetition("반 리그", League, Rules{TimeSec: 60}, entrants(26), 4, t0)
+	c, err := newCompetition("반 리그", League, Rules{TimeSec: 60}, entrants(26), 4, false, t0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,11 +87,11 @@ func TestLeagueGroupsRandomBalanced(t *testing.T) {
 	if len(firsts) != 4 {
 		t.Fatalf("조마다 순위: %v", firsts)
 	}
-	if _, err := newCompetition("x", League, Rules{TimeSec: 60}, entrants(5), 3, t0); err == nil {
+	if _, err := newCompetition("x", League, Rules{TimeSec: 60}, entrants(5), 3, false, t0); err == nil {
 		t.Fatal("조마다 2명 미만이면 거부")
 	}
 	// 무작위: 두 번 만들면 조 편성이 대체로 다르다
-	d, _ := newCompetition("반 리그", League, Rules{TimeSec: 60}, entrants(26), 4, t0)
+	d, _ := newCompetition("반 리그", League, Rules{TimeSec: 60}, entrants(26), 4, false, t0)
 	same := true
 	for _, e := range c.Entrants {
 		for _, e2 := range d.Entrants {
@@ -105,8 +105,44 @@ func TestLeagueGroupsRandomBalanced(t *testing.T) {
 	}
 }
 
+func TestLeagueGroupsManual(t *testing.T) {
+	es := entrants(5)
+	for i := range es {
+		es[i].Group = []int{0, 0, 1, 1, 1}[i]
+	}
+	c, err := newCompetition("반 리그", League, Rules{TimeSec: 60}, es, 2, true, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range c.Entrants {
+		want := 0
+		if e.Name >= "학생02" {
+			want = 1
+		}
+		if e.Group != want {
+			t.Fatalf("교사가 정한 조 그대로: %s → %d", e.Name, e.Group)
+		}
+	}
+	if len(c.Fixtures) != 1+3 {
+		t.Fatalf("2명 조 1판 + 3명 조 3판: %d", len(c.Fixtures))
+	}
+	for _, f := range c.Fixtures {
+		if c.Entrants[f.A].Group != f.Group || c.Entrants[f.B].Group != f.Group {
+			t.Fatal("같은 조끼리만")
+		}
+	}
+	es[2].Group, es[3].Group = 0, 0 // B조 1명
+	if _, err := newCompetition("x", League, Rules{TimeSec: 60}, es, 2, true, t0); err == nil {
+		t.Fatal("한 명뿐인 조는 거절")
+	}
+	es[4].Group = 5
+	if _, err := newCompetition("x", League, Rules{TimeSec: 60}, es, 2, true, t0); err == nil {
+		t.Fatal("없는 조는 거절")
+	}
+}
+
 func TestTournamentByesAndAdvance(t *testing.T) {
-	c, err := newCompetition("토너먼트", Tournament, Rules{TimeSec: 60}, entrants(5), 1, t0)
+	c, err := newCompetition("토너먼트", Tournament, Rules{TimeSec: 60}, entrants(5), 1, false, t0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +182,7 @@ func TestTournamentByesAndAdvance(t *testing.T) {
 }
 
 func TestUndoBlockedAfterNextRoundStarts(t *testing.T) {
-	c, _ := newCompetition("t", Tournament, Rules{Goals: 3}, entrants(4), 1, t0)
+	c, _ := newCompetition("t", Tournament, Rules{Goals: 3}, entrants(4), 1, false, t0)
 	f0, f1 := c.at(0, 0), c.at(0, 1)
 	c.decide(f0, f0.A, 3, 1, "goals")
 	c.decide(f1, f1.B, 0, 3, "goals")
@@ -165,7 +201,7 @@ func TestUndoBlockedAfterNextRoundStarts(t *testing.T) {
 }
 
 func TestStandingsOrder(t *testing.T) {
-	c, _ := newCompetition("리그", League, Rules{TimeSec: 60}, entrants(3), 1, t0)
+	c, _ := newCompetition("리그", League, Rules{TimeSec: 60}, entrants(3), 1, false, t0)
 	// 참가자 0: 2승, 1: 1무1패, 2: 1무1패(득실 차이)
 	for _, f := range c.Fixtures {
 		switch {
@@ -237,6 +273,9 @@ func TestHubCompetitionFlow(t *testing.T) {
 	f.advance(500 * time.Millisecond)
 	if m.fixture.Status != fxDone || m.fixture.Winner != m.fixture.A || m.fixture.ScoreA != 1 {
 		t.Fatalf("경기 결과가 대진에 기록: %+v", m.fixture)
+	}
+	if len(f.saved) != 1 {
+		t.Fatalf("주 경기장(대회) 경기는 결과 파일로 남음: %d", len(f.saved))
 	}
 	// 대회 경기는 다시 하기 없음
 	p0 := m.players[0]

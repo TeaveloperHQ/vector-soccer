@@ -18,6 +18,8 @@ type hostCmd struct {
 	ID     string   `json:"id"`
 	Winner string   `json:"winner"` // "a" | "b" | "draw"
 	Groups int      `json:"groups"` // 리그 조 수
+	// Assign 은 교사가 직접 정한 조(학생 key → 조 번호, 0 = A조). 비어 있으면 무작위로 나눈다.
+	Assign map[string]int `json:"assign"`
 }
 
 func (h *Hub) hostErr(c *client, msg string) {
@@ -39,6 +41,14 @@ func (h *Hub) onHostMessage(in inMsg) {
 	}
 	c := h.comp
 	switch cmd.T {
+	case "subClose":
+		h.closeSubArena()
+		return
+	case "subOpen":
+		h.subClosed = false
+		log.Printf("보조 경기장 다시 엶")
+		h.lobbyDirty = true
+		return
 	case "compCreate":
 		if c != nil && !c.finished() {
 			h.hostErr(in.c, "진행 중인 대회가 있습니다. 먼저 대회를 끝내세요.")
@@ -50,11 +60,11 @@ func (h *Hub) onHostMessage(in inMsg) {
 			for _, p := range h.players {
 				if p.key() == k && !seen[k] {
 					seen[k] = true
-					entrants = append(entrants, Entrant{Key: k, SID: p.sid, Name: p.name})
+					entrants = append(entrants, Entrant{Key: k, SID: p.sid, Name: p.name, Group: cmd.Assign[k]})
 				}
 			}
 		}
-		nc, err := newCompetition(cmd.Name, cmd.Type, cmd.Rules, entrants, cmd.Groups, h.now())
+		nc, err := newCompetition(cmd.Name, cmd.Type, cmd.Rules, entrants, cmd.Groups, len(cmd.Assign) > 0, h.now())
 		if err != nil {
 			h.hostErr(in.c, err.Error())
 			return
@@ -153,6 +163,28 @@ func (h *Hub) onHostMessage(in inMsg) {
 		}
 		h.compChanged()
 	}
+}
+
+// closeSubArena 는 보조 경기장(학생끼리 연 경기·방·초대)을 한 번에 닫는다. 기록은 남기지 않는다.
+// 다시 열 때까지 새 방·초대·다시 하기도 막는다. 주 경기장(대회 경기)은 그대로 둔다.
+func (h *Hub) closeSubArena() {
+	h.subClosed = true
+	n := 0
+	for _, m := range h.matches {
+		if m.fixture == nil {
+			if m.phase != phEnd {
+				n++
+			}
+			h.cancelMatch(m, "선생님이 보조 경기장을 닫았습니다. 이 경기는 기록되지 않아요.")
+		}
+	}
+	for _, r := range h.rooms {
+		h.sendP(r.owner, map[string]string{"t": "notice", "message": "선생님이 보조 경기장을 닫아 방이 없어졌어요."})
+		h.closeRoom(r.owner)
+	}
+	clear(h.invites)
+	log.Printf("보조 경기장 폐쇄: 진행 중이던 경기 %d판 중지", n)
+	h.lobbyDirty = true
 }
 
 // startFixture 는 대진의 두 학생을 찾아 경기를 연다. 못 열면 이유를 돌려준다.

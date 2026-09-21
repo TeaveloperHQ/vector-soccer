@@ -101,6 +101,7 @@ type Hub struct {
 
 	comp      *Competition // 교사가 연 대회(없으면 nil)
 	compDirty bool
+	subClosed bool // 보조 경기장(학생끼리 여는 경기) 폐쇄 — 방·초대·다시 하기를 막는다
 
 	lobbyDirty bool
 	tick       int
@@ -299,7 +300,7 @@ func (h *Hub) onMessage(in inMsg) {
 }
 
 func (h *Hub) createRoom(p *Player, rules Rules) {
-	if p.match != nil {
+	if p.match != nil || h.subBlocked(p) {
 		return
 	}
 	if !rules.valid() {
@@ -335,7 +336,7 @@ func (h *Hub) closeRoom(p *Player) {
 func (h *Hub) joinRoom(p *Player, code string) {
 	r, ok := h.rooms[code]
 	switch {
-	case p.match != nil:
+	case p.match != nil || h.subBlocked(p):
 		return
 	case !ok:
 		h.sendErr(p, "그런 방이 없습니다. 방 번호를 확인하세요.")
@@ -350,7 +351,7 @@ func (h *Hub) joinRoom(p *Player, code string) {
 func (h *Hub) sendInvite(p *Player, toID string, rules Rules) {
 	to, ok := h.byID[toID]
 	switch {
-	case p.match != nil:
+	case p.match != nil || h.subBlocked(p):
 		return
 	case !ok || to.conn == nil:
 		h.sendErr(p, "그 친구는 지금 접속해 있지 않습니다.")
@@ -390,10 +391,18 @@ func (h *Hub) replyInvite(p *Player, fromID string, accept bool) {
 		h.sendErr(p, from.name+" 학생이 지금은 경기할 수 없습니다.")
 		return
 	}
-	if p.match != nil {
+	if p.match != nil || h.subBlocked(p) {
 		return
 	}
 	h.startMatch(from, p, inv.rules, nil, 1) // 초대 받은 사람이 선축
+}
+
+// subBlocked 는 보조 경기장이 닫혀 있으면 학생에게 알리고 true.
+func (h *Hub) subBlocked(p *Player) bool {
+	if h.subClosed {
+		h.sendErr(p, "보조 경기장이 닫혀 있어요. 선생님이 다시 열 때까지 기다려 주세요.")
+	}
+	return h.subClosed
 }
 
 func (h *Hub) startMatch(a, b *Player, rules Rules, fx *Fixture, first int) *Match {
@@ -419,6 +428,9 @@ func (h *Hub) startMatch(a, b *Player, rules Rules, fx *Fixture, first int) *Mat
 func (h *Hub) requestRematch(p *Player) {
 	m := p.match
 	if m == nil || m.phase != phEnd || m.fixture != nil { // 대회 경기는 다시 하기 없음
+		return
+	}
+	if h.subBlocked(p) {
 		return
 	}
 	side := m.sideOf(p)
@@ -473,7 +485,7 @@ func (h *Hub) endMatch(m *Match) {
 	if !m.saved {
 		m.saved = true
 		h.ended[m] = h.now()
-		if m.played > 0 || m.score != [2]int{} {
+		if m.fixture != nil && (m.played > 0 || m.score != [2]int{}) { // 기록은 주 경기장(대회 경기)만 남긴다
 			h.save(m)
 		}
 		h.recordFixture(m)
@@ -696,7 +708,7 @@ func (h *Hub) broadcastLobby() {
 		h.sendP(p, map[string]any{
 			"t": "lobby", "players": list, "rooms": rooms,
 			"invites": invs, "sent": sent, "myRoom": myRoom,
-			"comp": h.compInfoFor(p),
+			"comp": h.compInfoFor(p), "subClosed": h.subClosed,
 		})
 	}
 }
@@ -740,6 +752,8 @@ func (h *Hub) hostMsg() []byte {
 		Win   int        `json:"winner"`
 		Inj   bool       `json:"inj"`
 		Start int64      `json:"start"`
+		Fx    bool       `json:"fx"`    // 대회 경기(주 경기장). 아니면 학생이 따로 만든 방(보조 경기장)
+		Round string     `json:"round"` // 대회 경기의 조·라운드 이름
 	}
 	matches := []hm{}
 	for _, m := range h.matches {
@@ -747,13 +761,18 @@ func (h *Hub) hostMsg() []byte {
 		if m.rules.TimeSec > 0 {
 			tl = int(m.playLeft.Milliseconds())
 		}
+		round := ""
+		if m.fixture != nil && h.comp != nil {
+			round = strings.TrimSpace(h.comp.groupName(m.fixture.Group) + " " + h.comp.roundName(m.fixture.Round))
+		}
 		matches = append(matches, hm{
 			m.id, [2]string{m.players[0].label(), m.players[1].label()}, m.score, m.phase, tl,
 			[2]float64{r2(m.ball.X), r2(m.ball.Y)}, m.rules, m.winner, m.inInjury, m.startedAt.UnixMilli(),
+			m.fixture != nil, round,
 		})
 	}
 	sort.Slice(matches, func(i, j int) bool { return matches[i].Start < matches[j].Start })
-	return mustJSON(map[string]any{"t": "host", "players": players, "matches": matches, "rooms": len(h.rooms)})
+	return mustJSON(map[string]any{"t": "host", "players": players, "matches": matches, "rooms": len(h.rooms), "subClosed": h.subClosed})
 }
 
 // ── WebSocket 펌프 ──────────────────────────────────────────
