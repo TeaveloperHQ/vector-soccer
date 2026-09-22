@@ -84,9 +84,9 @@
   .arena { font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 999px; }
   .arena.main { background: var(--acc); color: var(--on-acc); }
   .arena.sub { background: var(--hover); color: var(--mut); border: 1px solid var(--bd); }
-  .mcard.fx { border: 2px solid var(--acc); }
+  .mcard.onmain { border: 2px solid var(--acc); } /* .fx 는 대회 탭 대진 줄 스타일이라 쓰지 않는다 */
   .mcard .rd { display: none; font-size: 12px; font-weight: 800; color: var(--acc); margin-bottom: 6px; }
-  .mcard.fx .rd { display: block; }
+  .mcard.onmain .rd { display: block; }
   #matches.sub .mcard { opacity: .8; }
   .subnote { font-size: 12px; color: var(--mut); font-weight: 600; }
   .subclosed { color: var(--bad); font-weight: 700; font-size: 14px; margin: -4px 0 12px; }
@@ -109,11 +109,22 @@
 
   /* QR 전체화면 */
   .qrfull { display: none; position: fixed; inset: 0; z-index: 50; align-items: center; justify-content: center;
-            background: rgba(15,23,42,.93); cursor: zoom-out; padding: 3vmin; }
+            gap: 5vmin; flex-wrap: wrap; background: rgba(15,23,42,.93); cursor: zoom-out; padding: 3vmin; }
   .qrfull.show { display: flex; }
-  .qrpanel { background: #fff; border-radius: 24px; padding: 4vmin; display: flex; flex-direction: column; align-items: center; gap: 2.4vh; }
-  .qrpanel img { width: min(76vh, 80vw); height: auto; image-rendering: pixelated; }
-  .qrpanel .qrurl { font-size: clamp(18px, 3.2vh, 40px); font-weight: 800; color: #0f172a; font-family: ui-monospace, monospace; }
+  .qrpanel { background: #fff; border-radius: 24px; padding: 4vmin; display: flex; flex-direction: column; align-items: center; gap: 2.4vh; max-width: 96vw; }
+  .qrpanel img { width: min(76vh, 56vw); height: auto; image-rendering: pixelated; }
+  .qrpanel .qrurl { font-size: clamp(18px, 3.2vh, 40px); font-weight: 800; color: #0f172a; font-family: ui-monospace, monospace; word-break: break-all; }
+  .qrpanel .qrhint { font-size: 14px; color: #64748b; }
+  /* QR 전체화면 옆 접속자 명단(classroom-quiz 와 같은 배치) — 충분히 들어왔는지 보고 닫는다 */
+  .qrplayers { color: #fff; display: flex; flex-direction: column; min-width: 240px; max-width: 34vw; max-height: 88vh; }
+  .qrplayers .cnt { font-size: clamp(22px, 3.6vh, 44px); font-weight: 800; margin-bottom: 2vh; }
+  .qrplayers .cnt b { color: #38bdf8; }
+  .qrplayers .names { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 1.2vh; overflow-y: auto; padding-right: 4px; }
+  .qrplayers .names .nm { background: rgba(255,255,255,.12); border-radius: 10px; padding: 10px 12px; font-weight: 700;
+                          font-size: clamp(15px, 2.1vh, 24px); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; animation: qrpop .25s ease; }
+  .qrplayers .names .empty { color: #cbd5e1; font-size: clamp(15px, 2vh, 20px); grid-column: 1 / -1; border: none; padding: 0; text-align: left; }
+  .qrplayers .rejoin { margin-top: 2.4vh; color: #cbd5e1; font-size: clamp(13px, 1.8vh, 18px); line-height: 1.5; }
+  @keyframes qrpop { from { transform: scale(.85); opacity: 0; } to { transform: none; opacity: 1; } }
 
   /* 대회 탭 */
   #toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 60; background: #0f172a; color: #fff;
@@ -142,6 +153,10 @@
   .btn:disabled { opacity: .45; cursor: default; }
   .btn.warn { background: none; color: var(--bad); border: 1px solid var(--bd); box-shadow: none; }
   .comphead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .startnote { margin-top: 10px; padding: 10px 14px; border-radius: 10px; font-size: 14px; background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.45); }
+  .startnote b { color: #b45309; } :root[data-theme="dark"] .startnote b { color: #fcd34d; }
+  .startnote span { color: var(--mut); font-size: 13px; }
+  #tab-comp:fullscreen .startnote { display: none; }
   .comphead h1 { font-size: 24px; margin: 0; }
   .tbadge { font-size: 13px; font-weight: 800; padding: 4px 10px; border-radius: 999px; background: var(--acc-soft); color: var(--acc); }
   .comphead .meta { color: var(--mut); font-size: 14px; }
@@ -272,7 +287,12 @@
 
 <div id="toast"></div>
 <div id="qrFull" class="qrfull" title="닫기">
-  <div class="qrpanel"><img id="qrFullImg" alt="QR"><div class="qrurl" id="qrFullUrl"></div></div>
+  <div class="qrpanel"><img id="qrFullImg" alt="QR"><div class="qrurl" id="qrFullUrl"></div><div class="qrhint">아무 곳이나 누르거나 ESC 로 닫기</div></div>
+  <div class="qrplayers">
+    <div class="cnt">접속 <b id="qrCount">0</b>명</div>
+    <div class="names" id="qrNames"></div>
+    <div class="rejoin">튕겼다면 QR 을 찍고 <b>같은 학번·이름</b>으로 들어오면<br>하던 경기로 돌아가요.</div>
+  </div>
 </div>
 
 <script>
@@ -325,11 +345,31 @@ const NET_ICON = {
   connect();
 })();
 
-const openQr = () => { $('#qrFullImg').src = '/qr.png?size=1024'; $('#qrFull').classList.add('show'); };
+const qrShown = () => $('#qrFull').classList.contains('show');
+const openQr = () => { $('#qrFullImg').src = '/qr.png?size=1024'; fillQrPlayers(); $('#qrFull').classList.add('show'); };
+const closeQr = () => $('#qrFull').classList.remove('show');
 $('#qr').onclick = openQr;
 $('#qrBig').onclick = openQr;
-$('#qrFull').onclick = () => $('#qrFull').classList.remove('show');
-addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#qrFull').classList.remove('show'); });
+$('#qrFull').onclick = closeQr;
+addEventListener('keydown', (e) => { if (e.key === 'Escape') closeQr(); });
+
+// QR 전체화면 옆 접속자 명단. 새로 들어온 이름만 추가해 기존 칸이 다시 튀지 않게 한다.
+function fillQrPlayers() {
+  const online = (lastHost?.players || []).filter((p) => p.online);
+  $('#qrCount').textContent = online.length;
+  const box = $('#qrNames');
+  const sig = online.map((p) => p.key).join('|');
+  if (box.dataset.sig === sig) return;
+  box.dataset.sig = sig;
+  const had = new Set([...box.querySelectorAll('.nm')].map((d) => d.dataset.key));
+  box.innerHTML = online.length ? '' : '<div class="empty">QR 을 찍으면 여기에 학생이 나타나요.</div>';
+  for (const p of online) {
+    const d = document.createElement('div');
+    d.className = 'nm'; d.dataset.key = p.key; d.textContent = p.name;
+    if (had.has(p.key)) d.style.animation = 'none';
+    box.appendChild(d);
+  }
+}
 
 // ── 실시간 현황 ──────────────────────────────────────────
 let ws;
@@ -339,7 +379,7 @@ function connect() {
   ws.onclose = () => { $('#conn').textContent = '○ 끊김 — 재시도'; $('#conn').style.color = 'var(--bad)'; setTimeout(connect, 1500); };
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
-    if (m.t === 'host') { lastHost = m; renderLive(m); if (!compState?.comp && !$('#tab-comp').hidden) syncEntrantPicker(); }
+    if (m.t === 'host') { lastHost = m; renderLive(m); if (qrShown()) fillQrPlayers(); if (!compState?.comp && !$('#tab-comp').hidden) syncEntrantPicker(); }
     else if (m.t === 'comp') { compState = m; renderComp(); }
     else if (m.t === 'hostError') toast(m.message);
   };
@@ -398,7 +438,7 @@ function renderCards(box, list, emptyMsg) {
       card.innerHTML = '<div class="rd"></div><canvas width="440" height="256"></canvas><div class="line"><span class="nm a"></span><span class="sc"></span><span class="nm r b"></span></div><div class="meta"><span class="ph"></span><span class="tm"></span></div>';
       box.appendChild(card);
     }
-    card.classList.toggle('fx', !!x.fx);
+    card.classList.toggle('onmain', !!x.fx);
     card.querySelector('.rd').textContent = x.fx ? (x.round || '대회 경기') : '';
     card.querySelector('.nm.a').textContent = x.names[0];
     card.querySelector('.nm.b').textContent = x.names[1];
@@ -603,6 +643,16 @@ function renderActive(cs) {
   const cur = cs.current;
   const curPending = cur >= 0 && c.fixtures.some((f) => f.round === cur && f.status === 'pending' && f.a >= 0 && f.b >= 0);
   const finished = cur < 0;
+  // 라운드 일부만 시작됐으면 남은 경기와 못 연 이유를 버튼 아래에 보여 준다.
+  const curFx = cur >= 0 ? c.fixtures.filter((f) => f.round === cur && f.a >= 0 && f.b >= 0) : [];
+  const waitFx = curFx.filter((f) => f.status === 'pending');
+  const partial = waitFx.length > 0 && waitFx.length < curFx.length;
+  const why = (f) => {
+    const r = [f.a, f.b].map((i) => !cs.online[i] ? `${E[i].name} 접속 안 함` : cs.busy[i] ? `${E[i].name} 다른 경기 중` : '').filter(Boolean);
+    return r.length ? r.join(', ') : '시작 가능';
+  };
+  const startNote = partial ? `<div class="startnote"><b>${waitFx.length}경기 시작 필요</b> — ${waitFx.map((f) =>
+    `${esc(E[f.a].name)} vs ${esc(E[f.b].name)} (${esc(why(f))})`).join(' · ')}<br><span>학생이 들어오거나 다른 경기가 끝나면 [▶ 남은 경기 시작]을 다시 누르세요. 결석이면 ⋯ 메뉴에서 승자를 지정하세요.</span></div>` : '';
 
   const menu = (f) => {
     const items = [];
@@ -622,10 +672,11 @@ function renderActive(cs) {
       <span class="meta">${esc(ruleText(c.rules))}${c.rules.goldenGoal ? ' · 동점이면 골든골' : ''} · ${E.length}명${c.groups > 1 ? ` · ${c.groups}개 조` : ''}</span>
       <span class="spring"></span>
       <span class="ctl">${finished ? '<button class="btn" id="newComp">새 대회 만들기</button>'
-        : `<button class="btn lg" id="startRound" ${curPending ? '' : 'disabled'}>▶ ${esc(cs.roundNames[cur])} 시작</button>`}
+        : `<button class="btn lg" id="startRound" ${curPending ? '' : 'disabled'}>▶ ${esc(cs.roundNames[cur])} ${partial ? `남은 ${waitFx.length}경기 ` : ''}시작</button>`}
       <button class="btn ghost" id="bigView">크게 보기</button>
       <button class="btn warn" id="closeComp">대회 끝내기</button></span>
     </div>
+    ${startNote}
     <div class="progress"><i style="width:${real.length ? done / real.length * 100 : 0}%"></i></div>
     <div class="meta" style="color:var(--mut);font-size:13px">${done} / ${real.length} 경기 끝${finished ? ' — 대회 종료!' : ` · 지금: ${esc(cs.roundNames[cur])}`}
       · <i class="dot on"></i>접속 <i class="dot busy"></i>다른 경기 중 <i class="dot"></i>접속 안 함</div></div>`;
